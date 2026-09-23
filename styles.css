@@ -33,7 +33,6 @@ h3 { font-size: 21px; margin-bottom: 0; }
 .btn:hover { transform: translateY(-1px); }
 .btn.primary { background: var(--dark); color: #fff; }
 .btn.secondary { background: #fff; color: #28334a; border: 1px solid var(--line); }
-.file-btn { display: inline-flex; align-items: center; }
 .card { background: var(--card); border: 1px solid var(--line); box-shadow: var(--shadow); border-radius: var(--radius); }
 .sync-pill { display: inline-flex; align-items: center; gap: 7px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 999px; background: rgba(255,255,255,.8); color: #68758a; font-size: 11px; font-weight: 800; }
 .sync-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 0 4px rgba(216,149,24,.10); }
@@ -169,3 +168,7 @@ td strong { color: #273249; }
   .usage-ring { width: 82px; height: 82px; }
   .modal-card { padding: 17px; }
 }
+
+.input-with-suffix { display:flex; align-items:center; gap:8px; }
+.input-with-suffix input { flex:1; }
+.input-with-suffix span { color:#7b8799; font-size:12px; white-space:nowrap; }

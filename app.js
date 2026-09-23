@@ -21,7 +21,29 @@ function nowLocalDateTime() {
   const d = new Date();
   return { date: `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`, time: `${pad2(d.getHours())}:${pad2(d.getMinutes())}` };
 }
+function dateKeyFromDate(d) {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+function timeFromDate(d) {
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
 function parseDateTime(date, time) { return new Date(`${date}T${time}:00`); }
+function getLeaveStartDate(leave) {
+  if (leave?.startedAt) {
+    const parsed = new Date(leave.startedAt);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  if (leave?.date && leave?.start) return parseDateTime(leave.date, leave.start);
+  return new Date(0);
+}
+function getLeaveEndDate(leave) {
+  if (leave?.endsAt) {
+    const parsed = new Date(leave.endsAt);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  if (leave?.date && leave?.end) return parseDateTime(leave.date, leave.end);
+  return getLeaveStartDate(leave);
+}
 function durationHours(start, end) {
   const [sh, sm] = start.split(':').map(Number);
   const [eh, em] = end.split(':').map(Number);
@@ -79,18 +101,39 @@ function normalizeState(data) {
       name: String(m.name || '').trim(),
       username: String(m.username || '').trim().replace(/^@+/, '')
     })).filter(m => m.name && m.username),
-    leaves: (Array.isArray(data?.leaves) ? data.leaves : []).map(l => ({
-      id: String(l.id || uuid('l')),
-      memberId: String(l.memberId || ''),
-      type: l.type === 'daily' ? 'daily' : 'hourly',
-      date: String(l.date || ''),
-      start: normalizeTime(l.start),
-      end: normalizeTime(l.end),
-      hours: Number(l.hours || 0),
-      extraApproved: Boolean(l.extraApproved),
-      approvedBy: String(l.approvedBy || ''),
-      note: String(l.note || '')
-    })).filter(l => l.memberId && l.date && l.start && l.end && Number(l.hours) > 0)
+    leaves: (Array.isArray(data?.leaves) ? data.leaves : []).map(l => {
+      const legacyStart = normalizeTime(l.start);
+      const legacyEnd = normalizeTime(l.end);
+      let startedAt = String(l.startedAt || '');
+      let endsAt = String(l.endsAt || '');
+      if (!startedAt && l.date && legacyStart) {
+        const legacyDate = parseDateTime(String(l.date), legacyStart);
+        if (!Number.isNaN(legacyDate.getTime())) startedAt = legacyDate.toISOString();
+      }
+      if (!endsAt && l.date && legacyEnd) {
+        const legacyDate = parseDateTime(String(l.date), legacyEnd);
+        if (!Number.isNaN(legacyDate.getTime())) endsAt = legacyDate.toISOString();
+      }
+      const hours = Number(l.hours || 0);
+      const durationMinutes = Number.isFinite(Number(l.durationMinutes)) ? Number(l.durationMinutes) : Math.round(hours * 60);
+      const startDate = startedAt ? new Date(startedAt) : null;
+      const endDate = endsAt ? new Date(endsAt) : null;
+      return {
+        id: String(l.id || uuid('l')),
+        memberId: String(l.memberId || ''),
+        type: l.type === 'daily' ? 'daily' : 'hourly',
+        date: String(l.date || (startDate && !Number.isNaN(startDate.getTime()) ? dateKeyFromDate(startDate) : '')),
+        start: legacyStart || (startDate && !Number.isNaN(startDate.getTime()) ? timeFromDate(startDate) : ''),
+        end: legacyEnd || (endDate && !Number.isNaN(endDate.getTime()) ? timeFromDate(endDate) : ''),
+        startedAt,
+        endsAt,
+        durationMinutes,
+        hours,
+        extraApproved: Boolean(l.extraApproved),
+        approvedBy: String(l.approvedBy || ''),
+        note: String(l.note || '')
+      };
+    }).filter(l => l.memberId && l.date && Number(l.hours) > 0 && l.startedAt && l.endsAt)
   };
 }
 function replaceState(data) {
@@ -223,8 +266,8 @@ function quotaDaysEquivalent(used) {
 }
 
 function leaveStatus(leave, now = new Date()) {
-  const start = parseDateTime(leave.date, leave.start);
-  const end = parseDateTime(leave.date, leave.end);
+  const start = getLeaveStartDate(leave);
+  const end = getLeaveEndDate(leave);
   if (now < start) return 'upcoming';
   if (now >= start && now < end) return 'active';
   return 'past';
@@ -246,7 +289,6 @@ function renderSummary() {
   const monthLeaves = state.leaves.filter(isInSelectedMonth);
   const now = new Date();
   $('#activeLeaveCount').textContent = faNum(monthLeaves.filter(l => leaveStatus(l, now) === 'active').length);
-  $('#upcomingLeaveCount').textContent = faNum(monthLeaves.filter(l => leaveStatus(l, now) === 'upcoming').length);
   const used = monthLeaves.filter(l => !l.extraApproved).reduce((sum, l) => sum + Number(l.hours || 0), 0);
   $('#usedLeaveHours').textContent = formatHours(used);
 }
@@ -301,13 +343,15 @@ function renderLiveRows(leaves) {
     if (!member) return '';
     const status = leaveStatus(leave, now);
     const typeLabel = leave.type === 'daily' ? 'روزانه' : 'ساعتی';
+    const startDate = getLeaveStartDate(leave);
+    const endDate = getLeaveEndDate(leave);
     const timer = status === 'active' ? `
-      <div class="timer-wrap" data-timer data-date="${leave.date}" data-start="${leave.start}" data-end="${leave.end}">
+      <div class="timer-wrap" data-timer data-start-at="${escapeHtml(startDate.toISOString())}" data-end-at="${escapeHtml(endDate.toISOString())}">
         <div class="leave-timer-ring"><div><strong data-timer-value>00:00:00</strong><small>گذشته</small></div></div>
-        <div class="timer-detail"><strong>پایان: ${escapeHtml(leave.end)}</strong><small class="timer-remaining" data-remaining>باقی‌مانده…</small></div>
+        <div class="timer-detail"><strong>پایان خودکار: ${escapeHtml(timeFromDate(endDate))}</strong><small class="timer-remaining" data-remaining>باقی‌مانده…</small></div>
       </div>` : status === 'upcoming' ? `
-      <div class="timer-wrap"><div class="leave-timer-ring" style="--progress:0%"><div><strong>—</strong><small>آینده</small></div></div><div class="timer-detail"><strong>شروع: ${escapeHtml(leave.start)}</strong><small>${escapeHtml(formatDate(leave.date))}</small></div></div>` : `
-      <div class="timer-wrap"><div class="timer-detail"><strong>پایان: ${escapeHtml(leave.end)}</strong><small>${escapeHtml(formatDate(leave.date))}</small></div></div>`;
+      <div class="timer-wrap"><div class="leave-timer-ring" style="--progress:0%"><div><strong>—</strong><small>آینده</small></div></div><div class="timer-detail"><strong>فعال می‌شود: ${escapeHtml(timeFromDate(startDate))}</strong><small>${escapeHtml(formatDate(leave.date))}</small></div></div>` : `
+      <div class="timer-wrap"><div class="timer-detail"><strong>پایان: ${escapeHtml(timeFromDate(endDate))}</strong><small>${escapeHtml(formatDate(leave.date))}</small></div></div>`;
     return `
       <div class="board-row">
         <div class="board-person"><div class="avatar">${escapeHtml(initials(member.name))}</div><div><div class="board-name">${escapeHtml(member.name)}</div><div class="board-meta">@${escapeHtml(member.username)}</div></div></div>
@@ -322,26 +366,25 @@ function renderLiveRows(leaves) {
 }
 
 function renderLeaveBoard() {
-  const monthLeaves = state.leaves.filter(isInSelectedMonth).sort((a, b) => parseDateTime(a.date, a.start) - parseDateTime(b.date, b.start));
+  const monthLeaves = state.leaves.filter(isInSelectedMonth).sort((a, b) => getLeaveStartDate(b) - getLeaveStartDate(a));
   const now = new Date();
   let leaves = monthLeaves;
   if (ui.boardTab === 'active') leaves = monthLeaves.filter(l => leaveStatus(l, now) === 'active');
-  if (ui.boardTab === 'upcoming') leaves = monthLeaves.filter(l => leaveStatus(l, now) === 'upcoming');
   $('#leaveBoard').innerHTML = leaves.length ? `<div class="board-list">${renderLiveRows(leaves)}</div>` : '<div class="empty">موردی برای نمایش در این بخش وجود ندارد.</div>';
   updateLiveTimers();
 }
 
 function renderHistory() {
   const body = $('#historyTableBody');
-  const rows = state.leaves.filter(isInSelectedMonth).sort((a, b) => parseDateTime(b.date, b.start) - parseDateTime(a.date, a.start));
-  if (!rows.length) { body.innerHTML = '<tr><td colspan="7"><div class="empty">برای این ماه هنوز مرخصی ثبت نشده است.</div></td></tr>'; return; }
+  const rows = state.leaves.filter(isInSelectedMonth).sort((a, b) => getLeaveStartDate(b) - getLeaveStartDate(a));
+  if (!rows.length) { body.innerHTML = '<tr><td colspan="6"><div class="empty">برای این ماه هنوز مرخصی ثبت نشده است.</div></td></tr>'; return; }
   const now = new Date();
   body.innerHTML = rows.map(l => {
     const m = getMember(l.memberId);
     const status = leaveStatus(l, now);
     const statusText = status === 'active' ? 'در حال مرخصی' : status === 'upcoming' ? 'آینده' : 'پایان‌یافته';
     const statusClass = status === 'active' ? 'active' : status === 'upcoming' ? 'upcoming' : '';
-    return `<tr id="history-${escapeHtml(l.id)}"><td><strong>${escapeHtml(m?.name || 'عضو حذف‌شده')}</strong><div class="board-meta">@${escapeHtml(m?.username || '-')}</div></td><td>${l.type === 'daily' ? 'روزانه' : 'ساعتی'} ${l.extraApproved ? '<span class="badge extra">اضافه</span>' : ''}</td><td>${escapeHtml(formatDate(l.date))}</td><td>${escapeHtml(l.start)} تا ${escapeHtml(l.end)}</td><td>${escapeHtml(formatHours(l.hours))} ساعت</td><td><span class="badge ${statusClass}">${statusText}</span></td><td><div class="table-actions"><button class="text-btn" data-edit-leave="${escapeHtml(l.id)}">ویرایش</button><button class="text-btn danger" data-delete-leave="${escapeHtml(l.id)}">حذف</button></div></td></tr>`;
+    return `<tr id="history-${escapeHtml(l.id)}"><td><strong>${escapeHtml(m?.name || 'عضو حذف‌شده')}</strong><div class="board-meta">@${escapeHtml(m?.username || '-')}</div></td><td>${l.type === 'daily' ? 'روزانه' : 'ساعتی'} ${l.extraApproved ? '<span class="badge extra">اضافه</span>' : ''}</td><td>${escapeHtml(formatDate(l.date))}</td><td>${escapeHtml(formatDurationMinutes(Math.round(Number(l.hours || 0) * 60)))}</td><td><span class="badge ${statusClass}">${statusText}</span></td><td><div class="table-actions"><button class="text-btn" data-edit-leave="${escapeHtml(l.id)}">ویرایش</button><button class="text-btn danger" data-delete-leave="${escapeHtml(l.id)}">حذف</button></div></td></tr>`;
   }).join('');
 }
 
@@ -361,13 +404,10 @@ function openLeaveModal(memberId = '') {
   $('#leaveModalTitle').textContent = 'ثبت مرخصی جدید';
   $('#leaveId').value = '';
   populateLeaveMember(memberId || state.members[0]?.id || '');
-  const now = nowLocalDateTime();
-  $('#leaveDate').value = now.date;
-  $('#leaveStart').value = now.time;
   $('#leaveType').value = 'daily';
+  $('#leaveDuration').value = '60';
   $('#leaveExtra').value = 'no';
   $('#leaveLeader').value = '';
-  $('#leaveEnd').disabled = false;
   $('#leaveModal').classList.remove('hidden');
   updateLeaveFormUI();
 }
@@ -375,20 +415,16 @@ function updateLeaveFormUI() {
   const type = $('#leaveType').value;
   const extra = $('#leaveExtra').value === 'yes';
   const member = getMember($('#leaveMember').value);
-  $('#leaveEnd').disabled = type === 'daily';
-  if (type === 'daily') {
-    const start = $('#leaveStart').value || '09:00';
-    const [h, m] = start.split(':').map(Number);
-    const mins = h * 60 + m + DAILY_LEAVE_HOURS * 60;
-    $('#leaveEnd').value = `${pad2(Math.floor((mins % 1440) / 60))}:${pad2(mins % 60)}`;
-  }
+  const isDaily = type === 'daily';
+  $('#durationField').classList.toggle('hidden', isDaily);
+  const durationMinutes = isDaily ? DAILY_LEAVE_HOURS * 60 : Number($('#leaveDuration').value || 0);
+  const hours = durationMinutes / 60;
   const q = member ? quotaInfo(member.id, $('#leaveId').value) : { left: MONTHLY_QUOTA_HOURS, used: 0 };
-  const hours = type === 'daily' ? DAILY_LEAVE_HOURS : durationHours($('#leaveStart').value || '00:00', $('#leaveEnd').value || '00:00');
   const canFit = hours > 0 && q.left + 1e-9 >= hours;
-  let hint = `سهمیه ${member ? escapeHtml(member.name) : 'عضو'}: ${formatHours(q.left)} ساعت از ۲۱ ساعت باقی مانده است.`;
-  if (type === 'daily') hint += ` این درخواست ${DAILY_LEAVE_HOURS} ساعت از سهمیه را مصرف می‌کند.`;
-  else hint += ` مرخصی ساعتی باید بیشتر از صفر و حداکثر ${MAX_HOURLY_LEAVE_HOURS} ساعت باشد.`;
-  if (extra) hint += canFit ? ' سهمیه برای این درخواست کافی است؛ برای ثبت اضافه باید واقعاً سهمیه کافی نباشد.' : ' این درخواست به‌عنوان مرخصی اضافه ثبت می‌شود و از سهمیه ۲۱ ساعت کم نمی‌کند.';
+  let hint = `زمان شروع و پایان به‌صورت خودکار ثبت می‌شود. سهمیه ${member ? escapeHtml(member.name) : 'عضو'}: ${formatHours(q.left)} ساعت از ۲۱ ساعت باقی مانده است.`;
+  if (isDaily) hint += ` مرخصی روزانه خودکار ${DAILY_LEAVE_HOURS} ساعت از سهمیه را مصرف می‌کند.`;
+  else hint += ` مدت مرخصی ساعتی را بین ۱ تا ${MAX_HOURLY_LEAVE_HOURS * 60} دقیقه وارد کنید.`;
+  if (extra) hint += canFit ? ' سهمیه برای این درخواست کافی است؛ مرخصی اضافه فقط وقتی مجاز است که سهمیه عادی کافی نباشد.' : ' این درخواست به‌عنوان مرخصی اضافه ثبت می‌شود و از سهمیه ۲۱ ساعت کم نمی‌کند.';
   $('#leaveHint').innerHTML = hint;
   $('#leaveHint').classList.toggle('warn', extra || !canFit && hours > 0);
   $('#leaderField').classList.toggle('hidden', !extra);
@@ -396,26 +432,21 @@ function updateLeaveFormUI() {
 
 $('#leaveType').addEventListener('change', updateLeaveFormUI);
 $('#leaveMember').addEventListener('change', updateLeaveFormUI);
+$('#leaveDuration').addEventListener('input', updateLeaveFormUI);
 $('#leaveExtra').addEventListener('change', updateLeaveFormUI);
-$('#leaveStart').addEventListener('change', updateLeaveFormUI);
-$('#leaveEnd').addEventListener('change', updateLeaveFormUI);
 
 $('#leaveForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const id = $('#leaveId').value;
   const memberId = $('#leaveMember').value;
   const type = $('#leaveType').value;
-  const date = $('#leaveDate').value;
-  const start = $('#leaveStart').value;
-  const end = $('#leaveEnd').value;
   const extraApproved = $('#leaveExtra').value === 'yes';
   const approvedBy = $('#leaveLeader').value.trim();
   const note = $('#leaveNote').value.trim();
-  if (!memberId || !date || !start || !end) return toast('اطلاعات مرخصی کامل نیست.');
-  const hours = type === 'daily' ? DAILY_LEAVE_HOURS : durationHours(start, end);
-  if (type === 'daily' && Math.abs(durationHours(start, end) - DAILY_LEAVE_HOURS) > 0.001) return toast('مرخصی روزانه باید دقیقاً ۳ ساعت باشد.');
-  if (type === 'hourly' && (hours <= 0 || hours > MAX_HOURLY_LEAVE_HOURS)) return toast(`مرخصی ساعتی باید بیشتر از صفر و حداکثر ${MAX_HOURLY_LEAVE_HOURS} ساعت باشد.`);
-  if (hours <= 0) return toast('زمان پایان باید بعد از زمان شروع باشد.');
+  const durationMinutes = type === 'daily' ? DAILY_LEAVE_HOURS * 60 : Number.parseInt($('#leaveDuration').value, 10);
+  if (!memberId) return toast('عضو انتخاب نشده است.');
+  if (!Number.isInteger(durationMinutes) || durationMinutes < 1 || (type === 'hourly' && durationMinutes > MAX_HOURLY_LEAVE_HOURS * 60)) return toast(`مرخصی ساعتی باید بین ۱ تا ${MAX_HOURLY_LEAVE_HOURS * 60} دقیقه باشد.`);
+  const hours = durationMinutes / 60;
   const member = getMember(memberId);
   if (!member) return toast('عضو انتخاب‌شده پیدا نشد.');
 
@@ -428,7 +459,33 @@ $('#leaveForm').addEventListener('submit', async (e) => {
   }
 
   const existing = id ? state.leaves.find(l => l.id === id) : null;
-  const record = { id: id || uuid('l'), memberId, type, date, start, end, hours, extraApproved, approvedBy, note };
+  let startedAt;
+  let startedDate;
+  if (existing) {
+    const oldStart = getLeaveStartDate(existing);
+    if (Number.isNaN(oldStart.getTime()) || oldStart.getTime() <= 0) return toast('زمان ثبت قبلی مرخصی معتبر نیست.');
+    startedAt = oldStart;
+    startedDate = oldStart;
+  } else {
+    startedAt = new Date();
+    startedDate = startedAt;
+  }
+  const endDate = new Date(startedAt.getTime() + durationMinutes * 60000);
+  const record = {
+    id: id || uuid('l'),
+    memberId,
+    type,
+    date: existing?.date || dateKeyFromDate(startedDate),
+    start: timeFromDate(startedAt),
+    end: timeFromDate(endDate),
+    startedAt: startedAt.toISOString(),
+    endsAt: endDate.toISOString(),
+    durationMinutes,
+    hours,
+    extraApproved,
+    approvedBy,
+    note
+  };
   if (existing) Object.assign(existing, record); else state.leaves.push(record);
   await persistState();
   renderAll();
@@ -442,15 +499,14 @@ function editLeave(id) {
   populateLeaveMember(leave.memberId);
   $('#leaveId').value = leave.id;
   $('#leaveType').value = leave.type;
-  $('#leaveDate').value = leave.date;
-  $('#leaveStart').value = leave.start;
-  $('#leaveEnd').value = leave.end;
+  $('#leaveDuration').value = String(Math.max(1, Math.round(Number(leave.durationMinutes || Number(leave.hours || 0) * 60))));
   $('#leaveExtra').value = leave.extraApproved ? 'yes' : 'no';
   $('#leaveLeader').value = leave.approvedBy || '';
   $('#leaveNote').value = leave.note || '';
   $('#leaveModal').classList.remove('hidden');
   updateLeaveFormUI();
 }
+
 async function deleteLeave(id) {
   const leave = state.leaves.find(l => l.id === id); if (!leave) return;
   const member = getMember(leave.memberId);
@@ -517,22 +573,6 @@ function focusMemberHistory(memberId) {
   if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.classList.add('focus-row'); setTimeout(() => el.classList.remove('focus-row'), 1800); }
 }
 
-$('#exportBtn').addEventListener('click', () => {
-  const payload = { exportedAt: new Date().toISOString(), version: 2, members: state.members, leaves: state.leaves };
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `leave-manager-backup-${settings.month}.json`; a.click(); URL.revokeObjectURL(url); toast('فایل پشتیبان ساخته شد.');
-});
-
-$('#importInput').addEventListener('change', async (e) => {
-  const file = e.target.files?.[0]; if (!file) return;
-  try {
-    const data = JSON.parse(await file.text());
-    if (!Array.isArray(data.members) || !Array.isArray(data.leaves)) throw new Error('format');
-    if (!confirm('داده‌های فعلی با فایل پشتیبان جایگزین شوند؟')) return;
-    replaceState(data); await persistState(); renderAll(); renderMembersSettings(); toast('پشتیبان با موفقیت بازیابی شد.');
-  } catch (_) { toast('فایل پشتیبان معتبر نیست.'); }
-  finally { e.target.value = ''; }
-});
 
 function closeModal(id) { const el = document.getElementById(id); if (!el) return; el.classList.add('hidden'); el.setAttribute('aria-hidden', 'true'); }
 function openModal(id) { const el = document.getElementById(id); if (!el) return; el.classList.remove('hidden'); el.setAttribute('aria-hidden', 'false'); }
@@ -541,8 +581,9 @@ function toast(message) { const el = $('#toast'); el.textContent = message; el.c
 function updateLiveTimers() {
   const now = new Date();
   $$('[data-timer]').forEach(el => {
-    const start = parseDateTime(el.dataset.date, el.dataset.start);
-    const end = parseDateTime(el.dataset.date, el.dataset.end);
+    const start = new Date(el.dataset.startAt);
+    const end = new Date(el.dataset.endAt);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return;
     const total = Math.max(1, end - start);
     const elapsed = clamp(now - start, 0, total);
     const progress = (elapsed / total) * 100;

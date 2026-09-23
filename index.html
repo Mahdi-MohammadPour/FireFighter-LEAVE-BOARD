@@ -17,11 +17,6 @@
       </div>
       <div class="top-actions">
         <div class="sync-pill" id="syncStatus"><span class="sync-dot"></span><span id="syncStatusText">در حال آماده‌سازی…</span></div>
-        <button class="btn secondary" id="exportBtn">خروجی پشتیبان</button>
-        <label class="btn secondary file-btn">
-          بازیابی پشتیبان
-          <input id="importInput" type="file" accept="application/json" hidden />
-        </label>
         <button class="btn primary" id="settingsBtn">تنظیم اعضا</button>
       </div>
     </header>
@@ -38,7 +33,6 @@
       <section class="summary-grid">
         <div class="summary-card"><span>کل اعضا</span><strong id="memberCount">۰</strong><small>اعضای ثبت‌شده</small></div>
         <div class="summary-card accent"><span>مرخصی فعال</span><strong id="activeLeaveCount">۰</strong><small>همین الان در مرخصی</small></div>
-        <div class="summary-card warning"><span>در انتظار شروع</span><strong id="upcomingLeaveCount">۰</strong><small>مرخصی آینده</small></div>
         <div class="summary-card"><span>مصرف این ماه</span><strong id="usedLeaveHours">۰</strong><small>ساعت از ۲۱ ساعت</small></div>
       </section>
 
@@ -66,7 +60,6 @@
       <section class="leave-board card">
         <div class="board-tabs" role="tablist" aria-label="وضعیت مرخصی">
           <button class="tab active" data-board-tab="active">در حال مرخصی</button>
-          <button class="tab" data-board-tab="upcoming">آینده</button>
           <button class="tab" data-board-tab="all">همه</button>
         </div>
         <div id="leaveBoard"></div>
@@ -81,7 +74,7 @@
         </div>
         <div class="table-wrap card">
           <table>
-            <thead><tr><th>عضو</th><th>نوع</th><th>تاریخ</th><th>زمان</th><th>مدت</th><th>وضعیت</th><th></th></tr></thead>
+            <thead><tr><th>عضو</th><th>نوع</th><th>تاریخ</th><th>مدت</th><th>وضعیت</th><th></th></tr></thead>
             <tbody id="historyTableBody"></tbody>
           </table>
         </div>
@@ -106,9 +99,10 @@
             <option value="hourly">ساعتی — کمتر از ۳ ساعت، حداکثر ۲ ساعت</option>
           </select>
         </div>
-        <div class="field"><label for="leaveDate">تاریخ</label><input id="leaveDate" type="date" required /></div>
-        <div class="field"><label for="leaveStart">شروع</label><input id="leaveStart" type="time" step="60" required /></div>
-        <div class="field"><label for="leaveEnd">پایان</label><input id="leaveEnd" type="time" step="60" required /></div>
+        <div class="field" id="durationField">
+          <label for="leaveDuration">مدت مرخصی ساعتی</label>
+          <div class="input-with-suffix"><input id="leaveDuration" type="number" min="1" max="120" step="1" value="60" inputmode="numeric" /><span>دقیقه</span></div>
+        </div>
         <div class="field">
           <label for="leaveExtra">مرخصی اضافه با تأیید لیدر</label>
           <select id="leaveExtra">
