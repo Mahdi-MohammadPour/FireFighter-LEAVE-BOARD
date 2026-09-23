@@ -8,7 +8,29 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="app-shell">
+  <section class="auth-gate" id="authGate">
+    <div class="auth-card card">
+      <div class="auth-mark">FF</div>
+      <p class="eyebrow">FIRE FIGHTER • PRIVATE LEAVE BOARD</p>
+      <h1>ورود به پنل مرخصی</h1>
+      <p class="muted">دسترسی فقط برای لیدر و ساب‌لیدرهای ثبت‌شده فعال است.</p>
+      <form id="loginForm" class="auth-form">
+        <div class="field">
+          <label for="loginUsername">یوزرنیم</label>
+          <input id="loginUsername" type="text" autocomplete="username" spellcheck="false" placeholder="مثلاً mahdi" required />
+        </div>
+        <div class="field">
+          <label for="loginPassword">رمز عبور</label>
+          <input id="loginPassword" type="password" autocomplete="current-password" placeholder="رمز عبور" required />
+        </div>
+        <button class="btn primary auth-submit" id="loginSubmit" type="submit">ورود</button>
+        <div class="auth-message" id="authMessage" aria-live="polite"></div>
+      </form>
+      <p class="auth-footnote">اکانت‌ها از بخش Authentication در Supabase ساخته و به‌عنوان لیدر/ساب‌لیدر ثبت می‌شوند.</p>
+    </div>
+  </section>
+
+  <div class="app-shell hidden-until-auth" id="appShell">
     <header class="topbar">
       <div>
         <p class="eyebrow">FIRE FIGHTER • LEAVE BOARD • Made with love by (_Cg_)</p>
@@ -16,8 +38,10 @@
         <p class="muted">سهمیه هر نفر در هر ماه فقط ۲۱ ساعت است؛ ۳ ساعت برابر یک مرخصی روزانه کامل است.</p>
       </div>
       <div class="top-actions">
+        <div class="staff-pill" id="staffBadge"><span class="staff-dot"></span><span id="staffBadgeText">کاربر</span></div>
         <div class="sync-pill" id="syncStatus"><span class="sync-dot"></span><span id="syncStatusText">در حال آماده‌سازی…</span></div>
-        <button class="btn primary" id="settingsBtn">تنظیم اعضا</button>
+        <button class="btn secondary" id="settingsBtn">تنظیم اعضا</button>
+        <button class="btn secondary" id="logoutBtn">خروج</button>
       </div>
     </header>
 
@@ -26,6 +50,7 @@
         <label for="monthPicker">ماه</label>
         <input id="monthPicker" type="month" />
       </div>
+      <div class="month-meta" id="monthMeta"></div>
       <div class="toolbar-note"><span class="dot online"></span> مصرف سهمیه و سوابق بر اساس ماه انتخاب‌شده محاسبه می‌شود.</div>
     </section>
 
@@ -33,6 +58,7 @@
       <section class="summary-grid">
         <div class="summary-card"><span>کل اعضا</span><strong id="memberCount">۰</strong><small>اعضای ثبت‌شده</small></div>
         <div class="summary-card accent"><span>مرخصی فعال</span><strong id="activeLeaveCount">۰</strong><small>همین الان در مرخصی</small></div>
+        <div class="summary-card warning"><span>در انتظار شروع</span><strong id="upcomingLeaveCount">۰</strong><small>مرخصی آینده</small></div>
         <div class="summary-card"><span>مصرف این ماه</span><strong id="usedLeaveHours">۰</strong><small>ساعت از ۲۱ ساعت</small></div>
       </section>
 
@@ -52,7 +78,7 @@
       <section class="section-heading live-heading">
         <div>
           <h2>چه کسانی مرخصی هستند؟</h2>
-          <p class="muted">مرخصی‌های فعال با شمارش ثانیه‌ای و ساعت پایان نمایش داده می‌شوند.</p>
+          <p class="muted">مرخصی‌های فعال با شمارش ثانیه‌ای و تاریخ شروع/پایان میلادی و شمسی نمایش داده می‌شوند.</p>
         </div>
         <button class="btn primary" id="addLeaveBtn">ثبت مرخصی جدید</button>
       </section>
@@ -60,6 +86,7 @@
       <section class="leave-board card">
         <div class="board-tabs" role="tablist" aria-label="وضعیت مرخصی">
           <button class="tab active" data-board-tab="active">در حال مرخصی</button>
+          <button class="tab" data-board-tab="upcoming">آینده</button>
           <button class="tab" data-board-tab="all">همه</button>
         </div>
         <div id="leaveBoard"></div>
@@ -69,12 +96,12 @@
         <div class="section-heading">
           <div>
             <h2>سوابق مرخصی ماه</h2>
-            <p class="muted">همه مصرف‌ها، شامل روزانه و ساعتی، روی همان سقف ۲۱ ساعت جمع می‌شوند.</p>
+            <p class="muted">شروع و پایان هر رکورد با تاریخ و ساعت میلادی و شمسی ذخیره و نمایش داده می‌شود.</p>
           </div>
         </div>
         <div class="table-wrap card">
           <table>
-            <thead><tr><th>عضو</th><th>نوع</th><th>تاریخ</th><th>مدت</th><th>وضعیت</th><th></th></tr></thead>
+            <thead><tr><th>عضو</th><th>نوع</th><th>شروع</th><th>پایان</th><th>مدت</th><th>وضعیت</th><th></th></tr></thead>
             <tbody id="historyTableBody"></tbody>
           </table>
         </div>
@@ -96,13 +123,14 @@
           <label for="leaveType">نوع مرخصی</label>
           <select id="leaveType">
             <option value="daily">روزانه — دقیقاً ۳ ساعت</option>
-            <option value="hourly">ساعتی — کمتر از ۳ ساعت، حداکثر ۲ ساعت</option>
+            <option value="hourly">ساعتی — ۱ تا ۱۲۰ دقیقه</option>
           </select>
         </div>
-        <div class="field" id="durationField">
-          <label for="leaveDuration">مدت مرخصی ساعتی</label>
-          <div class="input-with-suffix"><input id="leaveDuration" type="number" min="1" max="120" step="1" value="60" inputmode="numeric" /><span>دقیقه</span></div>
+        <div class="field" id="hourlyMinutesField">
+          <label for="leaveMinutes">مدت مرخصی (دقیقه)</label>
+          <input id="leaveMinutes" type="number" min="1" max="120" step="1" value="60" inputmode="numeric" />
         </div>
+        <div class="field full start-end-preview" id="leaveDatePreview"></div>
         <div class="field">
           <label for="leaveExtra">مرخصی اضافه با تأیید لیدر</label>
           <select id="leaveExtra">
