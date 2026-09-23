@@ -84,6 +84,8 @@ input:focus, select:focus, textarea:focus { border-color: #8bb0f8; box-shadow: 0
 .usage-ring small { color: #7c8798; font-size: 9px; }
 .quota-title { font-size: 12px; color: #788397; margin-bottom: 6px; }
 .quota-value { font-size: 20px; font-weight: 900; }
+.quota-remaining { margin-top: 8px; color: var(--dark); font-size: 13px; font-weight: 800; }
+.quota-remaining strong { font-size: 14px; }
 .quota-sub { margin-top: 5px; font-size: 11px; color: #8490a3; line-height: 1.65; }
 .progress { height: 7px; background: #e9edf3; border-radius: 999px; overflow: hidden; margin-top: 10px; }
 .progress > span { display: block; height: 100%; border-radius: 999px; background: var(--green); }

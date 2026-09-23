@@ -35,7 +35,7 @@
       <div>
         <p class="eyebrow">FIRE FIGHTER • LEAVE BOARD • Made with love by (_Cg_)</p>
         <h1>مدیریت مرخصی فکشن</h1>
-        <p class="muted">سهمیه هر نفر در ماه جاری ۲۱ ساعت است؛ ۳ ساعت از سهمیه برابر یک مرخصی روزانه کامل است.</p>
+        <p class="muted">سهمیه هر نفر در ماه جاری ۲۱ ساعت است؛ هر روز مرخصی ۳ ساعت از سهمیه مصرف می‌کند و هر مرخصی ساعتی فقط ۱ یا ۲ ساعت است.</p>
       </div>
       <div class="top-actions">
         <div class="staff-pill" id="staffBadge"><span class="staff-dot"></span><span id="staffBadgeText">کاربر</span></div>
@@ -113,13 +113,28 @@
         <div class="field">
           <label for="leaveType">نوع مرخصی</label>
           <select id="leaveType">
-            <option value="daily">روزانه — دقیقاً ۳ ساعت</option>
-            <option value="hourly">ساعتی — ۱ تا ۱۲۰ دقیقه</option>
+            <option value="daily">روزانه</option>
+            <option value="hourly">ساعتی</option>
           </select>
         </div>
-        <div class="field" id="hourlyMinutesField">
-          <label for="leaveMinutes">مدت مرخصی (دقیقه)</label>
-          <input id="leaveMinutes" type="number" min="1" max="120" step="1" value="60" inputmode="numeric" />
+        <div class="field" id="dailyDaysField">
+          <label for="leaveDays">تعداد روز مرخصی</label>
+          <select id="leaveDays">
+            <option value="1">۱ روز</option>
+            <option value="2">۲ روز</option>
+            <option value="3">۳ روز</option>
+            <option value="4">۴ روز</option>
+            <option value="5">۵ روز</option>
+            <option value="6">۶ روز</option>
+            <option value="7">۷ روز</option>
+          </select>
+        </div>
+        <div class="field hidden" id="hourlyDurationField">
+          <label for="leaveDurationHours">مدت مرخصی ساعتی</label>
+          <select id="leaveDurationHours">
+            <option value="1">۱ ساعت</option>
+            <option value="2">۲ ساعت</option>
+          </select>
         </div>
         <div class="field full start-end-preview" id="leaveDatePreview"></div>
         <div class="field">
