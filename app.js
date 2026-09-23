@@ -67,8 +67,16 @@ function formatDurationSeconds(totalSeconds) {
   return `${pad2(h)}:${pad2(m)}:${pad2(s)}`;
 }
 function formatDateOnlyBoth(value) {
-  const d = value instanceof Date ? value : new Date(`${value}T12:00:00`);
-  if (Number.isNaN(d.getTime())) return '-';
+  let d;
+  if (value instanceof Date) {
+    d = value;
+  } else {
+    const raw = String(value ?? '').trim();
+    if (!raw) return '<span class="date-pair">-</span>';
+    // Accept full ISO timestamps (startAt/endAt) as well as YYYY-MM-DD values.
+    d = raw.includes('T') || /Z$|[+-]\d{2}:?\d{2}$/.test(raw) ? new Date(raw) : new Date(`${raw}T12:00:00`);
+  }
+  if (Number.isNaN(d.getTime())) return '<span class="date-pair">-</span>';
   const gregorian = new Intl.DateTimeFormat('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
   const jalali = new Intl.DateTimeFormat('fa-IR-u-ca-persian', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
   return `<span class="date-pair"><b>${escapeHtml(gregorian)}</b><small>شمسی: ${escapeHtml(jalali)}</small></span>`;
