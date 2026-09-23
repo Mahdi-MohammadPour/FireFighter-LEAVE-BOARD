@@ -213,3 +213,14 @@ td strong { color: #273249; }
 @media (max-width: 790px) {
   .leave-date-block { grid-template-columns: 1fr; min-width: 0; }
 }
+.member-search-wrap { display: flex; align-items: center; gap: 12px; justify-content: flex-end; flex-wrap: wrap; }
+.search-box { min-width: 250px; max-width: 320px; display: flex; align-items: center; gap: 8px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 12px; background: #fff; box-shadow: 0 6px 18px rgba(15,23,42,.04); color: #8792a5; }
+.search-box input { border: 0; outline: 0; width: 100%; min-width: 0; background: transparent; color: var(--dark); font: inherit; }
+.search-box input::placeholder { color: #a0a8b7; }
+.danger-outline { border: 1px solid rgba(220, 68, 68, .32); background: #fff; color: var(--red); }
+.danger-outline:hover { background: #fff5f5; }
+@media (max-width: 790px) {
+  .member-search-wrap { width: 100%; align-items: stretch; }
+  .search-box { max-width: none; width: 100%; }
+  .member-search-wrap .legend { width: 100%; }
+}

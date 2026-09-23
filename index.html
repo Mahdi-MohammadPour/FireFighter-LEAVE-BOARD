@@ -58,9 +58,15 @@
           <h2>وضعیت سهمیه اعضا</h2>
           <p class="muted">مرخصی روزانه و ساعتی جداگانه سهمیه ندارند؛ هر دو از مجموع ۲۱ ساعت ماهانه کم می‌شوند.</p>
         </div>
-        <div class="legend">
-          <span><i class="legend-dot green"></i>سهمیه عادی</span>
-          <span><i class="legend-dot amber"></i>مرخصی اضافه</span>
+        <div class="member-search-wrap">
+          <label class="search-box" for="memberSearch">
+            <span aria-hidden="true">⌕</span>
+            <input id="memberSearch" type="search" autocomplete="off" placeholder="جستجوی نام عضو…" aria-label="جستجوی نام عضو" />
+          </label>
+          <div class="legend">
+            <span><i class="legend-dot green"></i>سهمیه عادی</span>
+            <span><i class="legend-dot amber"></i>مرخصی اضافه</span>
+          </div>
         </div>
       </section>
 
@@ -89,6 +95,7 @@
             <h2>سوابق مرخصی</h2>
             <p class="muted">شروع و پایان هر رکورد با تاریخ و ساعت میلادی و شمسی ذخیره و نمایش داده می‌شود.</p>
           </div>
+          <button class="btn danger-outline" id="deleteAllLeavesBtn" type="button">حذف همه سوابق</button>
         </div>
         <div class="table-wrap card">
           <table>

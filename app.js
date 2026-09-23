@@ -17,7 +17,8 @@ const ui = {
   syncing: false,
   staff: null,
   authBusy: false,
-  currentUserId: ''
+  currentUserId: '',
+  memberSearch: ''
 };
 let toastTimer;
 let lastClockSignature = '';
@@ -360,7 +361,15 @@ function renderMembers() {
     el.innerHTML = '<div class="empty card">هنوز عضوی ثبت نشده است. از «تنظیم اعضا» اولین نفر را اضافه کن.</div>';
     return;
   }
-  el.innerHTML = state.members.map(member => {
+  const query = String(ui.memberSearch || '').trim().toLocaleLowerCase('fa-IR');
+  const members = query
+    ? state.members.filter(member => `${member.name || ''} ${member.username || ''}`.toLocaleLowerCase('fa-IR').includes(query))
+    : state.members;
+  if (!members.length) {
+    el.innerHTML = '<div class="empty card">عضوی با این نام پیدا نشد.</div>';
+    return;
+  }
+  el.innerHTML = members.map(member => {
     const q = quotaInfo(member.id);
     const extra = extraUsedHours(member.id);
     const [statusClass, statusText] = statusForQuota(q);
@@ -567,6 +576,23 @@ async function deleteLeave(id) {
   toast('مرخصی حذف شد.');
 }
 
+async function deleteAllLeaves() {
+  if (!state.leaves.length) return toast('هیچ سابقه‌ای برای حذف وجود ندارد.');
+  const count = state.leaves.length;
+  if (!confirm(`همه ${count} سابقه مرخصی حذف شوند؟`)) return;
+  if (!confirm('این عملیات سوابق مرخصی تمام اعضا را برای همه کاربران حذف می‌کند. ادامه می‌دهید؟')) return;
+  const previousLeaves = state.leaves;
+  state.leaves = [];
+  const saved = await persistState();
+  if (!saved) {
+    state.leaves = previousLeaves;
+    renderAll();
+    return;
+  }
+  renderAll();
+  toast(`همه ${count} سابقه مرخصی حذف شد.`);
+}
+
 $('#memberForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const id = $('#memberId').value;
@@ -602,6 +628,8 @@ async function deleteMember(id) {
 }
 
 $('#settingsBtn').addEventListener('click', () => { renderMembersSettings(); $('#membersModal').classList.remove('hidden'); });
+$('#memberSearch').addEventListener('input', (e) => { ui.memberSearch = e.target.value; renderMembers(); });
+$('#deleteAllLeavesBtn').addEventListener('click', deleteAllLeaves);
 $('#addLeaveBtn').addEventListener('click', () => openLeaveModal());
 $('#cancelMemberEdit').addEventListener('click', resetMemberForm);
 $('#logoutBtn').addEventListener('click', async () => { try { await ui.supabase.auth.signOut(); } catch (error) { console.error(error); } });
