@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#111827" />
+  <title>مدیریت مرخصی تیم</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">LEAVE MANAGER</p>
+        <h1>مدیریت مرخصی تیم</h1>
+        <p class="muted">هر نفر در هر ماه ۷ روز / ۲۱ ساعت سهمیه دارد.</p>
+      </div>
+      <div class="top-actions">
+        <button class="btn secondary" id="exportBtn">خروجی پشتیبان</button>
+        <label class="btn secondary file-btn">
+          بازیابی پشتیبان
+          <input id="importInput" type="file" accept="application/json" hidden />
+        </label>
+        <button class="btn primary" id="settingsBtn">تنظیم اعضا</button>
+      </div>
+    </header>
+
+    <section class="toolbar card">
+      <div class="toolbar-group">
+        <label for="monthPicker">ماه</label>
+        <input id="monthPicker" type="month" />
+      </div>
+      <div class="toolbar-note">
+        <span class="dot online"></span>
+        محاسبات بر اساس ماه انتخاب‌شده انجام می‌شود.
+      </div>
+    </section>
+
+    <main>
+      <section class="summary-grid" id="summaryGrid">
+        <div class="summary-card">
+          <span>کل اعضا</span>
+          <strong id="memberCount">۰</strong>
+          <small>اعضای ثبت‌شده</small>
+        </div>
+        <div class="summary-card accent">
+          <span>مرخصی فعال</span>
+          <strong id="activeLeaveCount">۰</strong>
+          <small>در حال حاضر</small>
+        </div>
+        <div class="summary-card warning">
+          <span>در انتظار شروع</span>
+          <strong id="upcomingLeaveCount">۰</strong>
+          <small>مرخصی ثبت‌شده آینده</small>
+        </div>
+        <div class="summary-card">
+          <span>استفاده‌شده این ماه</span>
+          <strong id="usedLeaveCount">۰</strong>
+          <small>رکوردهای مرخصی</small>
+        </div>
+      </section>
+
+      <section class="section-heading">
+        <div>
+          <h2>وضعیت مرخصی اعضا</h2>
+          <p class="muted">روزانه و ساعتی به‌صورت جداگانه محاسبه می‌شوند.</p>
+        </div>
+        <div class="legend">
+          <span><i class="legend-dot green"></i>سهمیه عادی</span>
+          <span><i class="legend-dot amber"></i>مرخصی اضافه</span>
+        </div>
+      </section>
+
+      <section class="members-grid" id="membersGrid"></section>
+
+      <section class="section-heading live-heading">
+        <div>
+          <h2>چه کسانی مرخصی هستند؟</h2>
+          <p class="muted">افراد فعال الان و مرخصی‌های آینده نمایش داده می‌شوند.</p>
+        </div>
+        <button class="btn primary" id="addLeaveBtn">ثبت مرخصی جدید</button>
+      </section>
+
+      <section class="leave-board card">
+        <div class="board-tabs" role="tablist" aria-label="وضعیت مرخصی">
+          <button class="tab active" data-board-tab="active">در حال مرخصی</button>
+          <button class="tab" data-board-tab="upcoming">آینده</button>
+          <button class="tab" data-board-tab="all">همه</button>
+        </div>
+        <div id="leaveBoard"></div>
+      </section>
+
+      <section class="history-section">
+        <div class="section-heading">
+          <div>
+            <h2>سوابق مرخصی ماه</h2>
+            <p class="muted">ثبت، ویرایش و حذف درخواست‌ها از همین بخش انجام می‌شود.</p>
+          </div>
+        </div>
+        <div class="table-wrap card">
+          <table>
+            <thead>
+              <tr>
+                <th>عضو</th>
+                <th>نوع</th>
+                <th>تاریخ</th>
+                <th>زمان</th>
+                <th>مدت</th>
+                <th>وضعیت</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="historyTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal hidden" id="leaveModal" aria-hidden="true">
+    <div class="modal-backdrop" data-close-modal="leaveModal"></div>
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <p class="eyebrow">NEW LEAVE</p>
+          <h3 id="leaveModalTitle">ثبت مرخصی جدید</h3>
+        </div>
+        <button class="icon-btn" data-close-modal="leaveModal" aria-label="بستن">×</button>
+      </div>
+      <form id="leaveForm" class="form-grid">
+        <input type="hidden" id="leaveId" />
+        <div class="field full">
+          <label for="leaveMember">عضو</label>
+          <select id="leaveMember" required></select>
+        </div>
+        <div class="field">
+          <label for="leaveType">نوع مرخصی</label>
+          <select id="leaveType">
+            <option value="daily">روزانه — ۳ ساعت</option>
+            <option value="hourly">ساعتی</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="leaveDate">تاریخ</label>
+          <input id="leaveDate" type="date" required />
+        </div>
+        <div class="field">
+          <label for="leaveStart">شروع</label>
+          <input id="leaveStart" type="time" required />
+        </div>
+        <div class="field" id="leaveEndField">
+          <label for="leaveEnd">پایان</label>
+          <input id="leaveEnd" type="time" required />
+        </div>
+        <div class="field">
+          <label for="leaveExtra">مرخصی اضافه با تأیید لیدر</label>
+          <select id="leaveExtra">
+            <option value="no">خیر؛ از سهمیه عادی</option>
+            <option value="yes">بله؛ مرخصی اضافه</option>
+          </select>
+        </div>
+        <div class="field" id="leaderField">
+          <label for="leaveLeader">نام لیدر تأییدکننده</label>
+          <input id="leaveLeader" type="text" placeholder="مثلاً علی رضایی" />
+        </div>
+        <div class="field">
+          <label for="leaveNote">توضیحات</label>
+          <textarea id="leaveNote" rows="3" placeholder="توضیحات اختیاری…"></textarea>
+        </div>
+        <div class="form-hint full" id="leaveHint"></div>
+        <div class="modal-actions full">
+          <button type="button" class="btn secondary" data-close-modal="leaveModal">انصراف</button>
+          <button type="submit" class="btn primary">ذخیره مرخصی</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="membersModal" aria-hidden="true">
+    <div class="modal-backdrop" data-close-modal="membersModal"></div>
+    <div class="modal-card wide">
+      <div class="modal-header">
+        <div>
+          <p class="eyebrow">TEAM SETTINGS</p>
+          <h3>مدیریت اعضا</h3>
+        </div>
+        <button class="icon-btn" data-close-modal="membersModal" aria-label="بستن">×</button>
+      </div>
+
+      <form id="memberForm" class="inline-form">
+        <input type="hidden" id="memberId" />
+        <input id="memberName" type="text" placeholder="نام عضو" required />
+        <input id="memberUsername" type="text" placeholder="username" required />
+        <button class="btn primary" type="submit">افزودن / ذخیره</button>
+        <button class="btn secondary hidden" id="cancelMemberEdit" type="button">لغو ویرایش</button>
+      </form>
+
+      <div class="member-settings-list" id="memberSettingsList"></div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn secondary" data-close-modal="membersModal">بستن</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
