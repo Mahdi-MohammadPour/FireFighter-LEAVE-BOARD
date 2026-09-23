@@ -1,6 +1,4 @@
-// برای فعال‌کردن حالت اشتراکی، مقادیر پروژه Supabase خودت را اینجا قرار بده.
-// از publishable/anon key استفاده کن؛ هرگز service_role/secret key را داخل GitHub Pages نگذار.
 window.LEAVE_MANAGER_CONFIG = {
-  supabaseUrl: '',
-  supabaseKey: ''
+  supabaseUrl: 'https://yeeoiyvewbegistzvjdx.supabase.co/rest/v1/',
+  supabaseKey: 'sb_publishable_VZJRQfLnyvY4f8qCG5SvEw_6iisMDXH'
 };
