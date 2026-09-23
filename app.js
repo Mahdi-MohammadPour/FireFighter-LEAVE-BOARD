@@ -1,4 +1,3 @@
-const SETTINGS_KEY = 'leave-manager-settings-v3';
 const MONTHLY_QUOTA_HOURS = 21;
 const DAILY_LEAVE_HOURS = 3;
 const MAX_HOURLY_LEAVE_MINUTES = 120;
@@ -7,7 +6,6 @@ const MIN_HOURLY_LEAVE_MINUTES = 1;
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 
-const settings = loadSettings();
 const state = { members: [], leaves: [] };
 const ui = {
   boardTab: 'active',
@@ -33,8 +31,7 @@ function localTimeFromIso(iso) { const d = new Date(iso); return Number.isNaN(d.
 function monthOf(date) { return String(date || '').slice(0, 7); }
 function monthOfLeave(leave) { return monthOf(leave.date || localDateFromIso(leave.startAt)); }
 function getMember(id) { return state.members.find(m => m.id === id); }
-function isInSelectedMonth(leave) { return monthOfLeave(leave) === settings.month; }
-function validMonthKey(value) { return /^\d{4}-\d{2}$/.test(value || ''); }
+function isInCurrentMonth(leave) { return monthOfLeave(leave) === currentMonth(); }
 function clamp(n, min, max) { return Math.min(max, Math.max(min, n)); }
 function escapeHtml(value) { return String(value ?? '').replace(/[&<>'"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[ch])); }
 function initials(name) { const parts = String(name || '').trim().split(/\s+/).filter(Boolean); return parts.slice(0, 2).map(p => p[0]).join('').toUpperCase() || '؟'; }
@@ -69,13 +66,6 @@ function formatDateTimeBoth(iso) {
   const jalali = new Intl.DateTimeFormat('fa-IR-u-ca-persian', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).format(d);
   return `<span class="date-pair"><b>${escapeHtml(gregorian)}</b><small>شمسی: ${escapeHtml(jalali)}</small></span>`;
 }
-function formatMonthBoth(monthKey) {
-  const d = new Date(`${monthKey}-01T12:00:00`);
-  if (Number.isNaN(d.getTime())) return '';
-  const gregorian = new Intl.DateTimeFormat('en-GB', { year: 'numeric', month: 'long' }).format(d);
-  const jalali = new Intl.DateTimeFormat('fa-IR-u-ca-persian', { year: 'numeric', month: 'long' }).format(d);
-  return `میلادی: ${gregorian} • شمسی: ${jalali}`;
-}
 function isSupabaseConfigured() {
   const cfg = window.LEAVE_MANAGER_CONFIG || {};
   return Boolean(window.supabase && cfg.supabaseUrl && cfg.supabaseKey);
@@ -87,18 +77,23 @@ function usernameToEmail(username) {
 }
 function normalizeUsername(value) { return String(value || '').trim().replace(/^@+/, '').toLowerCase(); }
 
-function loadSettings() {
-  try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && validMonthKey(parsed.month)) return parsed;
-    }
-  } catch (_) {}
-  return { month: currentMonth() };
+function addLocalDaysIso(iso, days) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  d.setDate(d.getDate() + days);
+  return d.toISOString();
 }
-function persistSettings() { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }
-
+function leaveDurationMinutes(type, quotaHours, fallbackMinutes = 0) {
+  if (type === 'daily') return 24 * 60;
+  const mins = Number(fallbackMinutes);
+  if (Number.isFinite(mins) && mins > 0) return Math.round(mins);
+  return Math.round(Number(quotaHours || 0) * 60);
+}
+function calculateEndAt(startAt, type, hours, durationMinutes = 0) {
+  if (!startAt) return '';
+  if (type === 'daily') return addLocalDaysIso(startAt, 1);
+  return new Date(new Date(startAt).getTime() + leaveDurationMinutes('hourly', hours, durationMinutes) * 60000).toISOString();
+}
 function normalizeState(data) {
   return {
     members: (Array.isArray(data?.members) ? data.members : []).map(m => ({
@@ -112,24 +107,30 @@ function normalizeState(data) {
       const legacyEnd = normalizeTime(l.end);
       const startLegacyDate = toLegacyDateTime(legacyDate, legacyStart);
       const endLegacyDate = toLegacyDateTime(legacyDate, legacyEnd);
+      const type = l.type === 'daily' ? 'daily' : 'hourly';
       const startAt = l.startAt || (startLegacyDate ? startLegacyDate.toISOString() : '');
+      let hours;
+      if (type === 'daily') hours = DAILY_LEAVE_HOURS;
+      else hours = Number(l.hours || (endLegacyDate && startLegacyDate ? Math.max(0, (endLegacyDate - startLegacyDate) / 3600000) : 0));
       let endAt = l.endAt || '';
-      if (!endAt && startLegacyDate && Number(l.hours) > 0) endAt = new Date(startLegacyDate.getTime() + Number(l.hours) * 3600000).toISOString();
+      if (type === 'daily' && startAt) endAt = calculateEndAt(startAt, 'daily', hours);
+      else if (!endAt && startAt && hours > 0) endAt = calculateEndAt(startAt, 'hourly', hours, Number(l.minutes || 0));
       const start = startAt ? localTimeFromIso(startAt) : legacyStart;
       const end = endAt ? localTimeFromIso(endAt) : legacyEnd;
       const date = startAt ? localDateFromIso(startAt) : legacyDate;
-      const hours = Number(l.hours || (endLegacyDate && startLegacyDate ? Math.max(0, (endLegacyDate - startLegacyDate) / 3600000) : 0));
+      const durationMinutes = leaveDurationMinutes(type, hours, Number(l.durationMinutes || l.minutes || 0));
       return {
         id: String(l.id || uuid('l')),
         memberId: String(l.memberId || ''),
-        type: l.type === 'daily' ? 'daily' : 'hourly',
+        type,
         date,
         start,
         end,
         startAt,
         endAt,
         hours,
-        minutes: Math.round(hours * 60),
+        minutes: durationMinutes,
+        durationMinutes,
         extraApproved: Boolean(l.extraApproved),
         approvedBy: String(l.approvedBy || ''),
         note: String(l.note || '')
@@ -284,14 +285,14 @@ function setSyncStatus(mode) {
   else { label.textContent = 'قفل'; }
 }
 
-function getMonthlyLeaves(memberId, excludeId = '') { return state.leaves.filter(l => l.memberId === memberId && isInSelectedMonth(l) && !l.extraApproved && l.id !== excludeId); }
+function getMonthlyLeaves(memberId, excludeId = '') { return state.leaves.filter(l => l.memberId === memberId && isInCurrentMonth(l) && !l.extraApproved && l.id !== excludeId); }
 function quotaUsedHours(memberId, excludeId = '') { return getMonthlyLeaves(memberId, excludeId).reduce((sum, l) => sum + Number(l.hours || 0), 0); }
 function quotaInfo(memberId, excludeId = '') {
   const used = Math.round(quotaUsedHours(memberId, excludeId) * 100) / 100;
   const left = Math.max(0, Math.round((MONTHLY_QUOTA_HOURS - used) * 100) / 100);
   return { used, left, pct: MONTHLY_QUOTA_HOURS ? clamp((used / MONTHLY_QUOTA_HOURS) * 100, 0, 100) : 0 };
 }
-function extraUsedHours(memberId) { return state.leaves.filter(l => l.memberId === memberId && isInSelectedMonth(l) && l.extraApproved).reduce((sum, l) => sum + Number(l.hours || 0), 0); }
+function extraUsedHours(memberId) { return state.leaves.filter(l => l.memberId === memberId && isInCurrentMonth(l) && l.extraApproved).reduce((sum, l) => sum + Number(l.hours || 0), 0); }
 function statusForQuota(q) {
   if (q.left <= 0) return ['zero', 'تمام شد'];
   if (q.left <= 6) return ['low', 'کمتر از ۶ ساعت'];
@@ -309,13 +310,12 @@ function leaveStatus(leave, now = new Date()) {
 
 function renderSummary() {
   $('#memberCount').textContent = faNum(state.members.length);
-  const monthLeaves = state.leaves.filter(isInSelectedMonth);
+  const currentMonthLeaves = state.leaves.filter(isInCurrentMonth);
   const now = new Date();
-  $('#activeLeaveCount').textContent = faNum(monthLeaves.filter(l => leaveStatus(l, now) === 'active').length);
-  $('#upcomingLeaveCount').textContent = faNum(monthLeaves.filter(l => leaveStatus(l, now) === 'upcoming').length);
-  const used = monthLeaves.filter(l => !l.extraApproved).reduce((sum, l) => sum + Number(l.hours || 0), 0);
+  $('#activeLeaveCount').textContent = faNum(state.leaves.filter(l => leaveStatus(l, now) === 'active').length);
+  $('#upcomingLeaveCount').textContent = faNum(state.leaves.filter(l => leaveStatus(l, now) === 'upcoming').length);
+  const used = currentMonthLeaves.filter(l => !l.extraApproved).reduce((sum, l) => sum + Number(l.hours || 0), 0);
   $('#usedLeaveHours').textContent = formatHours(used);
-  $('#monthMeta').textContent = formatMonthBoth(settings.month);
 }
 
 function renderMembers() {
@@ -354,7 +354,7 @@ function renderLiveRows(leaves) {
       <div class="board-person"><div class="avatar">${escapeHtml(initials(member.name))}</div><div><div class="board-name">${escapeHtml(member.name)}</div><div class="board-meta">@${escapeHtml(member.username)}</div></div></div>
       <div class="board-cell"><span class="badge ${status === 'active' ? 'active' : status === 'upcoming' ? 'upcoming' : ''}">${status === 'active' ? 'فعال' : status === 'upcoming' ? 'آینده' : 'پایان‌یافته'}</span></div>
       <div class="board-cell hide-mobile"><strong>${escapeHtml(typeLabel)}</strong>${leave.extraApproved ? '<div><span class="badge extra">اضافه</span></div>' : ''}</div>
-      <div class="board-cell hide-mobile"><strong>${formatDurationMinutes(leave.minutes || leave.hours * 60)}</strong></div>
+      <div class="board-cell hide-mobile"><strong>${leave.type === 'daily' ? '۱ روز کامل' : formatDurationMinutes(leave.durationMinutes || leave.minutes || leave.hours * 60)}</strong></div>
       <div class="board-cell date-cell">${formatDateTimeBoth(leave.startAt)}</div>
       <div class="board-cell">${timer}</div>
       <div class="table-actions"><button class="text-btn" data-edit-leave="${escapeHtml(leave.id)}">ویرایش</button><button class="text-btn danger" data-delete-leave="${escapeHtml(leave.id)}">حذف</button></div>
@@ -363,26 +363,26 @@ function renderLiveRows(leaves) {
 }
 
 function renderLeaveBoard() {
-  const monthLeaves = state.leaves.filter(isInSelectedMonth).sort((a, b) => new Date(a.startAt) - new Date(b.startAt));
+  const allLeaves = state.leaves.slice().sort((a, b) => new Date(a.startAt) - new Date(b.startAt));
   const now = new Date();
-  let leaves = monthLeaves;
-  if (ui.boardTab === 'active') leaves = monthLeaves.filter(l => leaveStatus(l, now) === 'active');
-  if (ui.boardTab === 'upcoming') leaves = monthLeaves.filter(l => leaveStatus(l, now) === 'upcoming');
+  let leaves = allLeaves;
+  if (ui.boardTab === 'active') leaves = allLeaves.filter(l => leaveStatus(l, now) === 'active');
+  if (ui.boardTab === 'upcoming') leaves = allLeaves.filter(l => leaveStatus(l, now) === 'upcoming');
   $('#leaveBoard').innerHTML = leaves.length ? `<div class="board-list">${renderLiveRows(leaves)}</div>` : '<div class="empty">موردی برای نمایش در این بخش وجود ندارد.</div>';
   updateLiveTimers();
 }
 
 function renderHistory() {
   const body = $('#historyTableBody');
-  const rows = state.leaves.filter(isInSelectedMonth).sort((a, b) => new Date(b.startAt) - new Date(a.startAt));
-  if (!rows.length) { body.innerHTML = '<tr><td colspan="7"><div class="empty">برای این ماه هنوز مرخصی ثبت نشده است.</div></td></tr>'; return; }
+  const rows = state.leaves.slice().sort((a, b) => new Date(b.startAt) - new Date(a.startAt));
+  if (!rows.length) { body.innerHTML = '<tr><td colspan="7"><div class="empty">هنوز مرخصی‌ای ثبت نشده است.</div></td></tr>'; return; }
   const now = new Date();
   body.innerHTML = rows.map(l => {
     const m = getMember(l.memberId);
     const status = leaveStatus(l, now);
     const statusText = status === 'active' ? 'در حال مرخصی' : status === 'upcoming' ? 'آینده' : 'پایان‌یافته';
     const statusClass = status === 'active' ? 'active' : status === 'upcoming' ? 'upcoming' : '';
-    return `<tr id="history-${escapeHtml(l.id)}"><td><strong>${escapeHtml(m?.name || 'عضو حذف‌شده')}</strong><div class="board-meta">@${escapeHtml(m?.username || '-')}</div></td><td>${l.type === 'daily' ? 'روزانه' : 'ساعتی'} ${l.extraApproved ? '<span class="badge extra">اضافه</span>' : ''}</td><td>${formatDateTimeBoth(l.startAt)}</td><td>${formatDateTimeBoth(l.endAt)}</td><td>${escapeHtml(formatDurationMinutes(l.minutes || l.hours * 60))}</td><td><span class="badge ${statusClass}">${statusText}</span></td><td><div class="table-actions"><button class="text-btn" data-edit-leave="${escapeHtml(l.id)}">ویرایش</button><button class="text-btn danger" data-delete-leave="${escapeHtml(l.id)}">حذف</button></div></td></tr>`;
+    return `<tr id="history-${escapeHtml(l.id)}"><td><strong>${escapeHtml(m?.name || 'عضو حذف‌شده')}</strong><div class="board-meta">@${escapeHtml(m?.username || '-')}</div></td><td>${l.type === 'daily' ? 'روزانه' : 'ساعتی'} ${l.extraApproved ? '<span class="badge extra">اضافه</span>' : ''}</td><td>${formatDateTimeBoth(l.startAt)}</td><td>${formatDateTimeBoth(l.endAt)}</td><td>${escapeHtml(l.type === 'daily' ? '۱ روز کامل' : formatDurationMinutes(l.durationMinutes || l.minutes || l.hours * 60))}</td><td><span class="badge ${statusClass}">${statusText}</span></td><td><div class="table-actions"><button class="text-btn" data-edit-leave="${escapeHtml(l.id)}">ویرایش</button><button class="text-btn danger" data-delete-leave="${escapeHtml(l.id)}">حذف</button></div></td></tr>`;
   }).join('');
 }
 
@@ -418,7 +418,7 @@ function openLeaveModal(memberId = '') {
   $('#leaveModal').classList.remove('hidden');
   const startAt = nowIso();
   const hours = DAILY_LEAVE_HOURS;
-  const endAt = new Date(Date.now() + hours * 3600000).toISOString();
+  const endAt = calculateEndAt(startAt, 'daily', hours);
   $('#leaveDatePreview').innerHTML = renderDatePreview(startAt, endAt);
   updateLeaveFormUI();
 }
@@ -432,11 +432,12 @@ function updateLeaveFormUI() {
   const q = member ? quotaInfo(member.id, $('#leaveId').value) : { left: MONTHLY_QUOTA_HOURS, used: 0 };
   const hours = getRequestedHours();
   const startAt = $('#leaveId').value ? state.leaves.find(l => l.id === $('#leaveId').value)?.startAt : nowIso();
-  const endAt = startAt ? new Date(new Date(startAt).getTime() + hours * 3600000).toISOString() : '';
+  const durationMinutes = type === 'daily' ? 24 * 60 : Math.round(hours * 60);
+  const endAt = startAt ? calculateEndAt(startAt, type, hours, durationMinutes) : '';
   $('#leaveDatePreview').innerHTML = renderDatePreview(startAt, endAt);
   const canFit = hours > 0 && q.left + 1e-9 >= hours;
   let hint = `سهمیه ${member ? escapeHtml(member.name) : 'عضو'}: ${formatHours(q.left)} ساعت از ۲۱ ساعت باقی مانده است.`;
-  hint += type === 'daily' ? ' این درخواست خودکار ۳ ساعت مصرف می‌کند.' : ` این درخواست ${formatDurationMinutes(hours * 60)} از سهمیه را مصرف می‌کند.`;
+  hint += type === 'daily' ? ' این درخواست از نظر سهمیه ۳ ساعت مصرف می‌کند، اما مرخصی روزانه تا تاریخ روز بعد ثبت می‌شود.' : ` این درخواست ${formatDurationMinutes(hours * 60)} از سهمیه را مصرف می‌کند.`;
   if (extra) hint += canFit ? ' سهمیه هنوز کافی است؛ برای مرخصی اضافه باید سهمیه کافی نباشد.' : ' این درخواست به‌عنوان مرخصی اضافه ثبت می‌شود و از سهمیه ۲۱ ساعت کم نمی‌کند.';
   $('#leaveHint').innerHTML = hint;
   $('#leaveHint').classList.toggle('warn', extra || (!canFit && hours > 0));
@@ -475,8 +476,9 @@ $('#leaveForm').addEventListener('submit', async (e) => {
   }
   const existing = id ? state.leaves.find(l => l.id === id) : null;
   const startAt = existing?.startAt || nowIso();
-  const endAt = new Date(new Date(startAt).getTime() + hours * 3600000).toISOString();
-  const record = { id: id || uuid('l'), memberId, type, date: localDateFromIso(startAt), start: localTimeFromIso(startAt), end: localTimeFromIso(endAt), startAt, endAt, hours, minutes: Math.round(hours * 60), extraApproved, approvedBy, note };
+  const durationMinutes = type === 'daily' ? 24 * 60 : Math.round(hours * 60);
+  const endAt = calculateEndAt(startAt, type, hours, durationMinutes);
+  const record = { id: id || uuid('l'), memberId, type, date: localDateFromIso(startAt), start: localTimeFromIso(startAt), end: localTimeFromIso(endAt), startAt, endAt, hours, minutes: durationMinutes, durationMinutes, extraApproved, approvedBy, note };
   if (existing) Object.assign(existing, record); else state.leaves.push(record);
   const saved = await persistState();
   if (!saved) return;
@@ -491,7 +493,7 @@ function editLeave(id) {
   populateLeaveMember(leave.memberId);
   $('#leaveId').value = leave.id;
   $('#leaveType').value = leave.type;
-  $('#leaveMinutes').value = String(Math.round((leave.hours || 0) * 60));
+  $('#leaveMinutes').value = leave.type === 'daily' ? '60' : String(Math.round((leave.durationMinutes || leave.minutes || (leave.hours || 0) * 60)));
   $('#leaveExtra').value = leave.extraApproved ? 'yes' : 'no';
   $('#leaveLeader').value = leave.approvedBy || '';
   $('#leaveNote').value = leave.note || '';
@@ -543,8 +545,6 @@ async function deleteMember(id) {
   renderAll(); renderMembersSettings(); resetMemberForm(); toast('عضو حذف شد.');
 }
 
-$('#monthPicker').value = settings.month;
-$('#monthPicker').addEventListener('change', () => { settings.month = $('#monthPicker').value || currentMonth(); persistSettings(); renderAll(); });
 $('#settingsBtn').addEventListener('click', () => { renderMembersSettings(); $('#membersModal').classList.remove('hidden'); });
 $('#addLeaveBtn').addEventListener('click', () => openLeaveModal());
 $('#cancelMemberEdit').addEventListener('click', resetMemberForm);
@@ -582,7 +582,7 @@ $('#loginForm').addEventListener('submit', async (e) => {
 });
 
 function showAuthMessage(message, isError = false) { const el = $('#authMessage'); el.textContent = message; el.classList.toggle('error', Boolean(isError)); }
-function focusMemberHistory(memberId) { const rows = state.leaves.filter(l => l.memberId === memberId && isInSelectedMonth(l)); if (!rows.length) return toast('برای این عضو در ماه انتخاب‌شده سابقه‌ای وجود ندارد.'); const target = rows[0]; const el = document.getElementById(`history-${target.id}`); if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.classList.add('focus-row'); setTimeout(() => el.classList.remove('focus-row'), 1800); } }
+function focusMemberHistory(memberId) { const rows = state.leaves.filter(l => l.memberId === memberId); if (!rows.length) return toast('برای این عضو سابقه‌ای وجود ندارد.'); const target = rows[0]; const el = document.getElementById(`history-${target.id}`); if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.classList.add('focus-row'); setTimeout(() => el.classList.remove('focus-row'), 1800); } }
 function closeModal(id) { const el = document.getElementById(id); if (!el) return; el.classList.add('hidden'); el.setAttribute('aria-hidden', 'true'); }
 function toast(message) { const el = $('#toast'); el.textContent = message; el.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 2600); }
 
@@ -608,9 +608,9 @@ function clockTick() {
   if (ui.dataMode !== 'remote') return;
   const now = new Date();
   updateLiveTimers();
-  const boardStatusSignature = state.leaves.filter(isInSelectedMonth).map(l => `${l.id}:${leaveStatus(l, now)}`).join('|');
+  const boardStatusSignature = state.leaves.map(l => `${l.id}:${leaveStatus(l, now)}`).join('|');
   if (boardStatusSignature !== lastClockSignature) { lastClockSignature = boardStatusSignature; renderSummary(); renderLeaveBoard(); renderHistory(); }
-  else if (state.leaves.some(l => isInSelectedMonth(l) && leaveStatus(l, now) === 'active')) renderSummary();
+  else if (state.leaves.some(l => leaveStatus(l, now) === 'active')) renderSummary();
 }
 function renderAll() { renderSummary(); renderMembers(); renderLeaveBoard(); renderHistory(); renderMembersSettings(); }
 
