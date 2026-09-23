@@ -30,6 +30,18 @@ function nowIso() { return new Date().toISOString(); }
 function toLegacyDateTime(date, time) { return date && time ? new Date(`${date}T${time}:00`) : null; }
 function localDateFromIso(iso) { const d = new Date(iso); return Number.isNaN(d.getTime()) ? '' : `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; }
 function localTimeFromIso(iso) { const d = new Date(iso); return Number.isNaN(d.getTime()) ? '' : `${pad2(d.getHours())}:${pad2(d.getMinutes())}`; }
+function localDateToStartIso(dateValue) {
+  const value = String(dateValue || '').trim();
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return '';
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const d = new Date(year, month - 1, day, 0, 0, 0, 0);
+  if (d.getFullYear() !== year || d.getMonth() !== month - 1 || d.getDate() !== day) return '';
+  return d.toISOString();
+}
+function todayLocalDateInput() { return localDateFromIso(nowIso()); }
 function monthOf(date) { return String(date || '').slice(0, 7); }
 function monthOfLeave(leave) { return monthOf(leave.date || localDateFromIso(leave.startAt)); }
 function getMember(id) { return state.members.find(m => m.id === id); }
@@ -356,10 +368,9 @@ function renderMembers() {
   }).join('');
 }
 
-function renderDatePreview(startAt, endAt, type = 'hourly') {
-  if (!startAt || !endAt) return '<div class="preview-empty">تاریخ شروع و پایان به‌صورت خودکار هنگام ثبت ساخته می‌شوند.</div>';
-  const formatter = type === 'daily' ? formatDateOnlyBoth : formatDateTimeBoth;
-  return `<div class="date-preview-grid"><div><span>شروع</span>${formatter(startAt)}</div><div><span>پایان</span>${formatter(endAt)}</div></div>`;
+function renderDatePreview(startAt, endAt) {
+  if (!startAt || !endAt) return '<div class="preview-empty">تاریخ شروع و پایان به‌صورت خودکار هنگام ثبت محاسبه می‌شوند.</div>';
+  return `<div class="date-preview-grid"><div><span>شروع</span>${formatDateOnlyBoth(startAt)}</div><div><span>پایان</span>${formatDateOnlyBoth(endAt)}</div></div>`;
 }
 
 function renderLiveRows(leaves) {
@@ -369,14 +380,15 @@ function renderLiveRows(leaves) {
     if (!member) return '';
     const status = leaveStatus(leave, now);
     const typeLabel = leave.type === 'daily' ? 'روزانه' : 'ساعتی';
-    const dateFormatter = leave.type === 'daily' ? formatDateOnlyBoth : formatDateTimeBoth;
-    const timer = status === 'active' ? `<div class="timer-wrap" data-timer data-start-at="${escapeHtml(leave.startAt)}" data-end-at="${escapeHtml(leave.endAt)}"><div class="leave-timer-ring"><div><strong data-timer-value>00:00:00</strong><small>گذشته</small></div></div><div class="timer-detail"><strong>پایان</strong>${dateFormatter(leave.endAt)}<small class="timer-remaining" data-remaining>باقی‌مانده…</small></div></div>` : status === 'upcoming' ? `<div class="timer-wrap"><div class="leave-timer-ring" style="--progress:0%"><div><strong>—</strong><small>آینده</small></div></div><div class="timer-detail"><strong>شروع</strong>${dateFormatter(leave.startAt)}</div></div>` : `<div class="timer-wrap"><div class="timer-detail"><strong>پایان‌یافته</strong>${dateFormatter(leave.endAt)}</div></div>`;
+    const dateFormatter = formatDateOnlyBoth;
+    const dateBlock = `<div class="leave-date-block"><div><span>شروع</span>${dateFormatter(leave.startAt)}</div><div><span>پایان</span>${dateFormatter(leave.endAt)}</div></div>`;
+    const timer = status === 'active' ? `<div class="timer-wrap" data-timer data-start-at="${escapeHtml(leave.startAt)}" data-end-at="${escapeHtml(leave.endAt)}"><div class="leave-timer-ring"><div><strong data-timer-value>00:00:00</strong><small>گذشته</small></div></div><div class="timer-detail"><strong>زمان باقی‌مانده</strong><small class="timer-remaining" data-remaining>باقی‌مانده…</small></div></div>` : status === 'upcoming' ? `<div class="timer-wrap"><div class="leave-timer-ring" style="--progress:0%"><div><strong>—</strong><small>آینده</small></div></div><div class="timer-detail"><strong>هنوز شروع نشده</strong><small>در تاریخ تعیین‌شده فعال می‌شود</small></div></div>` : `<div class="timer-wrap"><div class="timer-detail"><strong>پایان‌یافته</strong><small>مرخصی به پایان رسیده است</small></div></div>`;
     return `<div class="board-row">
       <div class="board-person"><div class="avatar">${escapeHtml(initials(member.name))}</div><div><div class="board-name">${escapeHtml(member.name)}</div><div class="board-meta">@${escapeHtml(member.username)}</div></div></div>
       <div class="board-cell"><span class="badge ${status === 'active' ? 'active' : status === 'upcoming' ? 'upcoming' : ''}">${status === 'active' ? 'فعال' : status === 'upcoming' ? 'آینده' : 'پایان‌یافته'}</span></div>
       <div class="board-cell hide-mobile"><strong>${escapeHtml(typeLabel)}</strong>${leave.extraApproved ? '<div><span class="badge extra">اضافه</span></div>' : ''}</div>
       <div class="board-cell hide-mobile"><strong>${leave.type === 'daily' ? `${faNum(leave.durationDays || 1)} روز کامل` : `${faNum(Number(leave.hours || 0))} ساعت`}</strong></div>
-      <div class="board-cell date-cell">${dateFormatter(leave.startAt)}</div>
+      <div class="board-cell date-cell">${dateBlock}</div>
       <div class="board-cell">${timer}</div>
       <div class="table-actions"><button class="text-btn" data-edit-leave="${escapeHtml(leave.id)}">ویرایش</button><button class="text-btn danger" data-delete-leave="${escapeHtml(leave.id)}">حذف</button></div>
     </div>`;
@@ -440,12 +452,8 @@ function openLeaveModal(memberId = '') {
   $('#leaveExtra').value = 'no';
   $('#leaveLeader').value = '';
   $('#leaveNote').value = '';
+  $('#leaveStartDate').value = todayLocalDateInput();
   $('#leaveModal').classList.remove('hidden');
-  const startAt = startOfLocalDayIso();
-  const days = getRequestedDays();
-  const hours = days * DAILY_LEAVE_HOURS;
-  const endAt = calculateEndAt(startAt, 'daily', hours, days * 24 * 60, days);
-  $('#leaveDatePreview').innerHTML = renderDatePreview(startAt, endAt, 'daily');
   updateLeaveFormUI();
 }
 
@@ -460,11 +468,11 @@ function updateLeaveFormUI() {
   const q = member ? quotaInfo(member.id, $('#leaveId').value) : { left: MONTHLY_QUOTA_HOURS, used: 0 };
   const hours = getRequestedHours();
   const durationDays = type === 'daily' ? getRequestedDays() : 0;
-  let startAt = $('#leaveId').value ? state.leaves.find(l => l.id === $('#leaveId').value)?.startAt : nowIso();
-  if (type === 'daily' && startAt) startAt = startOfLocalDayIso(startAt);
+  const startDate = $('#leaveStartDate').value || ($('#leaveId').value ? localDateFromIso(state.leaves.find(l => l.id === $('#leaveId').value)?.startAt) : todayLocalDateInput());
+  const startAt = localDateToStartIso(startDate);
   const durationMinutes = type === 'daily' ? durationDays * 24 * 60 : Math.round(hours * 60);
   const endAt = startAt ? calculateEndAt(startAt, type, hours, durationMinutes, durationDays) : '';
-  $('#leaveDatePreview').innerHTML = renderDatePreview(startAt, endAt, type);
+  $('#leaveDatePreview').innerHTML = renderDatePreview(startAt, endAt);
   const canFit = hours > 0 && q.left + 1e-9 >= hours;
   let hint = `سهمیه ${member ? escapeHtml(member.name) : 'عضو'}: ${formatHours(q.left)} ساعت از ۲۱ ساعت باقی مانده است.`;
   hint += type === 'daily' ? ` این درخواست ${faNum(durationDays)} روز کامل است و ${formatHours(hours)} ساعت از سهمیه کم می‌کند.` : ` این درخواست ${faNum(hours)} ساعت از سهمیه را مصرف می‌کند.`;
@@ -479,6 +487,7 @@ $('#leaveMember').addEventListener('change', updateLeaveFormUI);
 $('#leaveExtra').addEventListener('change', updateLeaveFormUI);
 $('#leaveDays').addEventListener('change', updateLeaveFormUI);
 $('#leaveDurationHours').addEventListener('change', updateLeaveFormUI);
+$('#leaveStartDate').addEventListener('change', updateLeaveFormUI);
 
 $('#leaveForm').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -510,8 +519,9 @@ $('#leaveForm').addEventListener('submit', async (e) => {
     if (q.left + 1e-9 < hours) return toast(`سهمیه عادی کافی نیست؛ فقط ${formatHours(q.left)} ساعت باقی مانده است.`);
   }
   const existing = id ? state.leaves.find(l => l.id === id) : null;
-  let startAt = existing?.startAt || nowIso();
-  if (type === 'daily') startAt = startOfLocalDayIso(startAt);
+  const startDate = $('#leaveStartDate').value;
+  const startAt = localDateToStartIso(startDate);
+  if (!startAt) return toast('تاریخ شروع مرخصی را به‌درستی انتخاب کنید.');
   const durationMinutes = type === 'daily' ? durationDays * 24 * 60 : Math.round(hours * 60);
   const endAt = calculateEndAt(startAt, type, hours, durationMinutes, durationDays);
   const record = { id: id || uuid('l'), memberId, type, date: localDateFromIso(startAt), start: localTimeFromIso(startAt), end: localTimeFromIso(endAt), startAt, endAt, hours, durationDays, minutes: durationMinutes, durationMinutes, extraApproved, approvedBy, note };
@@ -531,6 +541,7 @@ function editLeave(id) {
   $('#leaveType').value = leave.type;
   $('#leaveDays').value = leave.type === 'daily' ? String(clamp(Number(leave.durationDays || 1), MIN_DAILY_LEAVE_DAYS, MAX_DAILY_LEAVE_DAYS)) : '1';
   $('#leaveDurationHours').value = leave.type === 'hourly' ? String(Number(leave.hours || 1) >= 2 ? 2 : 1) : '1';
+  $('#leaveStartDate').value = localDateFromIso(leave.startAt) || todayLocalDateInput();
   $('#leaveExtra').value = leave.extraApproved ? 'yes' : 'no';
   $('#leaveLeader').value = leave.approvedBy || '';
   $('#leaveNote').value = leave.note || '';

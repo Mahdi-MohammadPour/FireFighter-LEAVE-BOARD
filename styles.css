@@ -206,3 +206,10 @@ td strong { color: #273249; }
   .date-preview-grid { grid-template-columns: 1fr; }
   .auth-card { padding: 23px; }
 }
+.leave-date-block { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; min-width: 230px; }
+.leave-date-block > div { display: flex; flex-direction: column; gap: 3px; }
+.leave-date-block > div > span { color: #8b95a6; font-size: 9px; font-weight: 900; }
+.leave-date-block .date-pair { margin-top: 0; }
+@media (max-width: 790px) {
+  .leave-date-block { grid-template-columns: 1fr; min-width: 0; }
+}
