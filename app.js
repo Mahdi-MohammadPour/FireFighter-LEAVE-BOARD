@@ -83,6 +83,12 @@ function addLocalDaysIso(iso, days) {
   d.setDate(d.getDate() + days);
   return d.toISOString();
 }
+function startOfLocalDayIso(isoOrDate = new Date()) {
+  const d = isoOrDate instanceof Date ? new Date(isoOrDate) : new Date(isoOrDate);
+  if (Number.isNaN(d.getTime())) return '';
+  const start = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+  return start.toISOString();
+}
 function leaveDurationMinutes(type, quotaHours, fallbackMinutes = 0) {
   if (type === 'daily') return 24 * 60;
   const mins = Number(fallbackMinutes);
@@ -108,10 +114,11 @@ function normalizeState(data) {
       const startLegacyDate = toLegacyDateTime(legacyDate, legacyStart);
       const endLegacyDate = toLegacyDateTime(legacyDate, legacyEnd);
       const type = l.type === 'daily' ? 'daily' : 'hourly';
-      const startAt = l.startAt || (startLegacyDate ? startLegacyDate.toISOString() : '');
+      let startAt = l.startAt || (startLegacyDate ? startLegacyDate.toISOString() : '');
       let hours;
       if (type === 'daily') hours = DAILY_LEAVE_HOURS;
       else hours = Number(l.hours || (endLegacyDate && startLegacyDate ? Math.max(0, (endLegacyDate - startLegacyDate) / 3600000) : 0));
+      if (type === 'daily' && startAt) startAt = startOfLocalDayIso(startAt);
       let endAt = l.endAt || '';
       if (type === 'daily' && startAt) endAt = calculateEndAt(startAt, 'daily', hours);
       else if (!endAt && startAt && hours > 0) endAt = calculateEndAt(startAt, 'hourly', hours, Number(l.minutes || 0));
@@ -328,18 +335,22 @@ function renderMembers() {
     const q = quotaInfo(member.id);
     const extra = extraUsedHours(member.id);
     const [statusClass, statusText] = statusForQuota(q);
+    const isOnLeave = state.leaves.some(l => l.memberId === member.id && leaveStatus(l, new Date()) === 'active');
+    const leaveDotClass = isOnLeave ? 'active' : 'idle';
+    const leaveDotText = isOnLeave ? 'در مرخصی' : 'آزاد';
     const ringColor = q.left <= 0 ? 'var(--red)' : q.left <= 6 ? 'var(--amber)' : 'var(--green)';
     return `<article class="member-card">
-      <div class="member-head"><div class="member-main"><div class="avatar">${escapeHtml(initials(member.name))}</div><div><div class="member-name">${escapeHtml(member.name)}</div><div class="member-username">@${escapeHtml(member.username)}</div></div></div><span class="member-status ${statusClass}">${statusText}</span></div>
+      <div class="member-head"><div class="member-main"><div class="avatar">${escapeHtml(initials(member.name))}</div><div><div class="member-name-row"><span class="leave-indicator ${leaveDotClass}" title="${leaveDotText}" aria-label="${leaveDotText}"></span><div class="member-name">${escapeHtml(member.name)}</div></div><div class="member-username">@${escapeHtml(member.username)}</div></div></div><span class="member-status ${statusClass}">${statusText}</span></div>
       <div class="quota-layout"><div class="usage-ring" style="--pct:${q.pct}%;--ring-color:${ringColor}"><div><strong>${formatHours(q.used)}h</strong><small>مصرف‌شده</small></div></div><div><div class="quota-title">مصرف سهمیه ماه</div><div class="quota-value">${formatHours(q.left)} ساعت باقی‌مانده</div><div class="quota-sub">${formatHours(q.used)} از ۲۱ ساعت مصرف شده • معادل ${faNum(quotaDaysEquivalent(q.used))} روز کامل</div><div class="progress"><span style="width:${q.pct}%"></span></div>${extra > 0 ? `<span class="extra-badge">+ ${formatHours(extra)} ساعت مرخصی اضافه</span>` : ''}</div></div>
       <div class="member-actions"><button class="btn secondary" data-member-leave="${escapeHtml(member.id)}">ثبت مرخصی</button><button class="btn secondary" data-member-history="${escapeHtml(member.id)}">مشاهده سابقه</button></div>
     </article>`;
   }).join('');
 }
 
-function renderDatePreview(startAt, endAt) {
+function renderDatePreview(startAt, endAt, type = 'hourly') {
   if (!startAt || !endAt) return '<div class="preview-empty">تاریخ شروع و پایان به‌صورت خودکار هنگام ثبت ساخته می‌شوند.</div>';
-  return `<div class="date-preview-grid"><div><span>شروع</span>${formatDateTimeBoth(startAt)}</div><div><span>پایان</span>${formatDateTimeBoth(endAt)}</div></div>`;
+  const formatter = type === 'daily' ? formatDateOnlyBoth : formatDateTimeBoth;
+  return `<div class="date-preview-grid"><div><span>شروع</span>${formatter(startAt)}</div><div><span>پایان</span>${formatter(endAt)}</div></div>`;
 }
 
 function renderLiveRows(leaves) {
@@ -349,13 +360,14 @@ function renderLiveRows(leaves) {
     if (!member) return '';
     const status = leaveStatus(leave, now);
     const typeLabel = leave.type === 'daily' ? 'روزانه' : 'ساعتی';
-    const timer = status === 'active' ? `<div class="timer-wrap" data-timer data-start-at="${escapeHtml(leave.startAt)}" data-end-at="${escapeHtml(leave.endAt)}"><div class="leave-timer-ring"><div><strong data-timer-value>00:00:00</strong><small>گذشته</small></div></div><div class="timer-detail"><strong>پایان</strong>${formatDateTimeBoth(leave.endAt)}<small class="timer-remaining" data-remaining>باقی‌مانده…</small></div></div>` : status === 'upcoming' ? `<div class="timer-wrap"><div class="leave-timer-ring" style="--progress:0%"><div><strong>—</strong><small>آینده</small></div></div><div class="timer-detail"><strong>شروع</strong>${formatDateTimeBoth(leave.startAt)}</div></div>` : `<div class="timer-wrap"><div class="timer-detail"><strong>پایان‌یافته</strong>${formatDateTimeBoth(leave.endAt)}</div></div>`;
+    const dateFormatter = leave.type === 'daily' ? formatDateOnlyBoth : formatDateTimeBoth;
+    const timer = status === 'active' ? `<div class="timer-wrap" data-timer data-start-at="${escapeHtml(leave.startAt)}" data-end-at="${escapeHtml(leave.endAt)}"><div class="leave-timer-ring"><div><strong data-timer-value>00:00:00</strong><small>گذشته</small></div></div><div class="timer-detail"><strong>پایان</strong>${dateFormatter(leave.endAt)}<small class="timer-remaining" data-remaining>باقی‌مانده…</small></div></div>` : status === 'upcoming' ? `<div class="timer-wrap"><div class="leave-timer-ring" style="--progress:0%"><div><strong>—</strong><small>آینده</small></div></div><div class="timer-detail"><strong>شروع</strong>${dateFormatter(leave.startAt)}</div></div>` : `<div class="timer-wrap"><div class="timer-detail"><strong>پایان‌یافته</strong>${dateFormatter(leave.endAt)}</div></div>`;
     return `<div class="board-row">
       <div class="board-person"><div class="avatar">${escapeHtml(initials(member.name))}</div><div><div class="board-name">${escapeHtml(member.name)}</div><div class="board-meta">@${escapeHtml(member.username)}</div></div></div>
       <div class="board-cell"><span class="badge ${status === 'active' ? 'active' : status === 'upcoming' ? 'upcoming' : ''}">${status === 'active' ? 'فعال' : status === 'upcoming' ? 'آینده' : 'پایان‌یافته'}</span></div>
       <div class="board-cell hide-mobile"><strong>${escapeHtml(typeLabel)}</strong>${leave.extraApproved ? '<div><span class="badge extra">اضافه</span></div>' : ''}</div>
       <div class="board-cell hide-mobile"><strong>${leave.type === 'daily' ? '۱ روز کامل' : formatDurationMinutes(leave.durationMinutes || leave.minutes || leave.hours * 60)}</strong></div>
-      <div class="board-cell date-cell">${formatDateTimeBoth(leave.startAt)}</div>
+      <div class="board-cell date-cell">${dateFormatter(leave.startAt)}</div>
       <div class="board-cell">${timer}</div>
       <div class="table-actions"><button class="text-btn" data-edit-leave="${escapeHtml(leave.id)}">ویرایش</button><button class="text-btn danger" data-delete-leave="${escapeHtml(leave.id)}">حذف</button></div>
     </div>`;
@@ -382,7 +394,8 @@ function renderHistory() {
     const status = leaveStatus(l, now);
     const statusText = status === 'active' ? 'در حال مرخصی' : status === 'upcoming' ? 'آینده' : 'پایان‌یافته';
     const statusClass = status === 'active' ? 'active' : status === 'upcoming' ? 'upcoming' : '';
-    return `<tr id="history-${escapeHtml(l.id)}"><td><strong>${escapeHtml(m?.name || 'عضو حذف‌شده')}</strong><div class="board-meta">@${escapeHtml(m?.username || '-')}</div></td><td>${l.type === 'daily' ? 'روزانه' : 'ساعتی'} ${l.extraApproved ? '<span class="badge extra">اضافه</span>' : ''}</td><td>${formatDateTimeBoth(l.startAt)}</td><td>${formatDateTimeBoth(l.endAt)}</td><td>${escapeHtml(l.type === 'daily' ? '۱ روز کامل' : formatDurationMinutes(l.durationMinutes || l.minutes || l.hours * 60))}</td><td><span class="badge ${statusClass}">${statusText}</span></td><td><div class="table-actions"><button class="text-btn" data-edit-leave="${escapeHtml(l.id)}">ویرایش</button><button class="text-btn danger" data-delete-leave="${escapeHtml(l.id)}">حذف</button></div></td></tr>`;
+    const dateFormatter = l.type === 'daily' ? formatDateOnlyBoth : formatDateTimeBoth;
+    return `<tr id="history-${escapeHtml(l.id)}"><td><strong>${escapeHtml(m?.name || 'عضو حذف‌شده')}</strong><div class="board-meta">@${escapeHtml(m?.username || '-')}</div></td><td>${l.type === 'daily' ? 'روزانه' : 'ساعتی'} ${l.extraApproved ? '<span class="badge extra">اضافه</span>' : ''}</td><td>${dateFormatter(l.startAt)}</td><td>${dateFormatter(l.endAt)}</td><td>${escapeHtml(l.type === 'daily' ? '۱ روز کامل' : formatDurationMinutes(l.durationMinutes || l.minutes || l.hours * 60))}</td><td><span class="badge ${statusClass}">${statusText}</span></td><td><div class="table-actions"><button class="text-btn" data-edit-leave="${escapeHtml(l.id)}">ویرایش</button><button class="text-btn danger" data-delete-leave="${escapeHtml(l.id)}">حذف</button></div></td></tr>`;
   }).join('');
 }
 
@@ -416,10 +429,10 @@ function openLeaveModal(memberId = '') {
   $('#leaveLeader').value = '';
   $('#leaveNote').value = '';
   $('#leaveModal').classList.remove('hidden');
-  const startAt = nowIso();
+  const startAt = startOfLocalDayIso();
   const hours = DAILY_LEAVE_HOURS;
   const endAt = calculateEndAt(startAt, 'daily', hours);
-  $('#leaveDatePreview').innerHTML = renderDatePreview(startAt, endAt);
+  $('#leaveDatePreview').innerHTML = renderDatePreview(startAt, endAt, 'daily');
   updateLeaveFormUI();
 }
 
@@ -431,10 +444,11 @@ function updateLeaveFormUI() {
   if (type === 'hourly') $('#leaveMinutes').value = clamp(Number.parseInt($('#leaveMinutes').value || '60', 10), MIN_HOURLY_LEAVE_MINUTES, MAX_HOURLY_LEAVE_MINUTES);
   const q = member ? quotaInfo(member.id, $('#leaveId').value) : { left: MONTHLY_QUOTA_HOURS, used: 0 };
   const hours = getRequestedHours();
-  const startAt = $('#leaveId').value ? state.leaves.find(l => l.id === $('#leaveId').value)?.startAt : nowIso();
+  let startAt = $('#leaveId').value ? state.leaves.find(l => l.id === $('#leaveId').value)?.startAt : nowIso();
+  if (type === 'daily' && startAt) startAt = startOfLocalDayIso(startAt);
   const durationMinutes = type === 'daily' ? 24 * 60 : Math.round(hours * 60);
   const endAt = startAt ? calculateEndAt(startAt, type, hours, durationMinutes) : '';
-  $('#leaveDatePreview').innerHTML = renderDatePreview(startAt, endAt);
+  $('#leaveDatePreview').innerHTML = renderDatePreview(startAt, endAt, type);
   const canFit = hours > 0 && q.left + 1e-9 >= hours;
   let hint = `سهمیه ${member ? escapeHtml(member.name) : 'عضو'}: ${formatHours(q.left)} ساعت از ۲۱ ساعت باقی مانده است.`;
   hint += type === 'daily' ? ' این درخواست از نظر سهمیه ۳ ساعت مصرف می‌کند، اما مرخصی روزانه تا تاریخ روز بعد ثبت می‌شود.' : ` این درخواست ${formatDurationMinutes(hours * 60)} از سهمیه را مصرف می‌کند.`;
@@ -475,7 +489,8 @@ $('#leaveForm').addEventListener('submit', async (e) => {
     if (q.left + 1e-9 < hours) return toast(`سهمیه عادی کافی نیست؛ فقط ${formatHours(q.left)} ساعت باقی مانده است.`);
   }
   const existing = id ? state.leaves.find(l => l.id === id) : null;
-  const startAt = existing?.startAt || nowIso();
+  let startAt = existing?.startAt || nowIso();
+  if (type === 'daily') startAt = startOfLocalDayIso(startAt);
   const durationMinutes = type === 'daily' ? 24 * 60 : Math.round(hours * 60);
   const endAt = calculateEndAt(startAt, type, hours, durationMinutes);
   const record = { id: id || uuid('l'), memberId, type, date: localDateFromIso(startAt), start: localTimeFromIso(startAt), end: localTimeFromIso(endAt), startAt, endAt, hours, minutes: durationMinutes, durationMinutes, extraApproved, approvedBy, note };

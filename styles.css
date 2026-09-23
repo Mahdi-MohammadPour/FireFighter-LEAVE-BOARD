@@ -67,6 +67,10 @@ input:focus, select:focus, textarea:focus { border-color: #8bb0f8; box-shadow: 0
 .member-main { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .avatar { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; background: var(--dark); color: #fff; font-weight: 900; flex: 0 0 auto; }
 .member-name { font-weight: 900; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.member-name-row { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.leave-indicator { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: 0 0 9px; box-shadow: 0 0 0 4px rgba(120,132,150,.08); }
+.leave-indicator.active { background: var(--green); box-shadow: 0 0 0 4px rgba(24,164,107,.12); }
+.leave-indicator.idle { background: #b8c1ce; box-shadow: 0 0 0 4px rgba(184,193,206,.12); }
 .member-username { direction: ltr; text-align: right; color: #8590a3; font-size: 12px; margin-top: 3px; }
 .member-status { border-radius: 999px; padding: 5px 9px; font-size: 11px; font-weight: 900; }
 .member-status.ok { color: var(--green); background: var(--green-soft); }
