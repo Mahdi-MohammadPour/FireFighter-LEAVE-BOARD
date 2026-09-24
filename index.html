@@ -5,12 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#0b1220" />
   <title>مدیریت مرخصی فکشن</title>
+  <script>
+    (function () {
+      try {
+        if (localStorage.getItem('ff-leave-theme') === 'dark') document.documentElement.dataset.theme = 'dark';
+      } catch (_) {}
+    })();
+  </script>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <section class="auth-gate" id="authGate">
     <div class="auth-card card">
-      <div class="auth-mark">FF</div>
+      <div class="auth-top-row"><div class="auth-mark">FF</div><button class="theme-toggle" id="authThemeToggle" type="button" aria-label="تغییر حالت نمایش">🌙 حالت شب</button></div>
       <p class="eyebrow">FIRE FIGHTER • PRIVATE LEAVE BOARD</p>
       <h1>ورود به پنل مرخصی</h1>
       <p class="muted">دسترسی فقط برای لیدر و ساب‌لیدرهای ثبت‌شده فعال است.</p>
@@ -40,6 +47,7 @@
       <div class="top-actions">
         <div class="staff-pill" id="staffBadge"><span class="staff-dot"></span><span id="staffBadgeText">کاربر</span></div>
         <div class="sync-pill" id="syncStatus"><span class="sync-dot"></span><span id="syncStatusText">در حال آماده‌سازی…</span></div>
+        <button class="btn secondary theme-toggle" id="themeToggle" type="button" aria-label="تغییر حالت نمایش">🌙 حالت شب</button>
         <button class="btn secondary" id="settingsBtn">تنظیم اعضا</button>
         <button class="btn secondary" id="logoutBtn">خروج</button>
       </div>

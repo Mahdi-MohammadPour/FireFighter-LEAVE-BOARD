@@ -8,6 +8,25 @@ const MAX_DAILY_LEAVE_DAYS = 7;
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 
+function getStoredTheme() {
+  try { return localStorage.getItem('ff-leave-theme') === 'dark' ? 'dark' : 'light'; }
+  catch (_) { return 'light'; }
+}
+function applyTheme(theme) {
+  const normalized = theme === 'dark' ? 'dark' : 'light';
+  document.documentElement.dataset.theme = normalized;
+  try { localStorage.setItem('ff-leave-theme', normalized); } catch (_) {}
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', normalized === 'dark' ? '#0f172a' : '#0b1220');
+  document.querySelectorAll('.theme-toggle').forEach((btn) => {
+    btn.textContent = normalized === 'dark' ? '☀️ حالت روشن' : '🌙 حالت شب';
+    btn.setAttribute('aria-pressed', normalized === 'dark' ? 'true' : 'false');
+  });
+}
+function toggleTheme() {
+  applyTheme(getStoredTheme() === 'dark' ? 'light' : 'dark');
+}
+
 const state = { members: [], leaves: [] };
 const ui = {
   boardTab: 'active',
@@ -626,6 +645,10 @@ async function deleteMember(id) {
   if (!saved) return;
   renderAll(); renderMembersSettings(); resetMemberForm(); toast('عضو حذف شد.');
 }
+
+applyTheme(getStoredTheme());
+$('#themeToggle')?.addEventListener('click', toggleTheme);
+$('#authThemeToggle')?.addEventListener('click', toggleTheme);
 
 $('#settingsBtn').addEventListener('click', () => { renderMembersSettings(); $('#membersModal').classList.remove('hidden'); });
 $('#memberSearch').addEventListener('input', (e) => { ui.memberSearch = e.target.value; renderMembers(); });
